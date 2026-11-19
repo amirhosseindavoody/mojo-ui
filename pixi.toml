@@ -1,0 +1,14 @@
+[workspace]
+name = "mojo-ui"
+version = "0.1.0"
+description = "A headless software rendering and UI library in Mojo"
+channels = ["https://conda.modular.com/max", "conda-forge"]
+platforms = ["linux-64", "linux-aarch64", "osx-arm64"]
+
+[dependencies]
+mojo = "1.2.*"
+
+[tasks]
+build = "mkdir -p build && mojo precompile src/mojo_ui -o build/mojo_ui.mojoc"
+test = "mojo run -I src tests/test_mojo_ui.mojo"
+example = "mkdir -p examples/out && mojo run -I src examples/demo.mojo"

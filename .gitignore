@@ -1,0 +1,15 @@
+# Pixi environment and compiler outputs
+/.pixi/
+/build/
+*.mojoc
+*.mojopkg
+.mojo_cache/
+__pycache__/
+
+# Generated example images
+/examples/out/
+
+# OS metadata
+.DS_Store
+Thumbs.db
+Desktop.ini
