@@ -24,6 +24,12 @@ import the package directly from source.
 The [demo](examples/demo.mojo) draws a rounded panel, a title, and two buttons
 and writes `examples/out/demo.png`. Open that file in any PNG viewer.
 
+## Learn the architecture
+
+The [mojo-ui field guide](https://amirhosseindavoody.github.io/mojo-ui/) follows
+a frame through the source and includes exercises on rendering and performance.
+Open [docs/index.html](docs/index.html) to read the same pages locally.
+
 ## Architecture
 
 - `geometry.mojo` defines integer points, sizes, padding, and half-open

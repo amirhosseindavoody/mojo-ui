@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Walk from the demo’s widget calls to the bytes of the saved PNG.">
+  <title>Follow a frame through the source | mojo-ui field guide</title>
+  <script src="theme.js"></script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="index.html">
+        <span class="brand-mark"><svg width="19" height="19" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M2 2h6v6H2zm10 0h6v6h-6zM2 12h6v6H2z" fill="currentColor"/><path d="M12.5 12.5h5v5h-5z" fill="none" stroke="currentColor"/></svg></span>
+        <span class="brand-name">mojo-ui</span>
+      </a>
+      <div class="header-actions">
+        <a href="https://github.com/amirhosseindavoody/mojo-ui">Repository</a>
+        <button class="theme" id="theme-toggle" type="button" hidden><span id="theme-choice">Dark</span><span class="theme-suffix"> theme</span></button>
+      </div>
+    </div>
+  </header>
+  <div class="shell">
+    <nav class="sidebar" aria-label="Guide chapters">
+      <p class="sidebar-title">Field guide</p>
+      <ul class="chapter-nav">
+        <li><a href="index.html">Start here</a></li>
+        <li><a href="architecture.html" aria-current="page">Follow a frame</a></li>
+        <li><a href="rendering.html">Rendering 101</a></li>
+        <li><a href="graphics-stack.html">The graphics stack</a></li>
+        <li><a href="performance.html">Mojo and performance</a></li>
+        <li><a href="exercises.html">Hands-on exercises</a></li>
+        <li><a href="reference.html">Glossary and reading</a></li>
+      </ul>
+      <p class="sidebar-note">Mojo 1.2 · CPU rasterizer</p>
+    </nav>
+    <main id="main" tabindex="-1" class="lesson">
+      <header class="lesson-header"><p class="eyebrow">Follow a frame</p><h1>Follow a frame through the source</h1><p class="lead">Walk from the demo’s widget calls to the bytes of the saved PNG.</p></header>
+      <nav class="local-nav" aria-label="On this page"><p>On this page</p><ul><li><a href="#frame">Frame flow</a></li><li><a href="#modules">Source tour</a></li><li><a href="#demo">Demo</a></li><li><a href="#tests">Tests and Pixi</a></li><li><a href="#roadmap">Roadmap</a></li></ul></nav>
+      <section id="frame">
+  <h2>The path from widget to PNG</h2>
+  <p>mojo-ui is a headless software renderer and a small immediate-mode UI in Mojo 1.2. The CPU draws into memory. The demo saves one frame to a PNG and exits. There is no window, event loop, GPU backend, or input handling.</p>
+  <figure class="diagram">
+    <ol class="flow-grid">
+      <li><strong>UI calls</strong><span><code>Label</code>, <code>Button</code>, <code>Stack.place</code></span><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 8h11m-4-4 4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></li>
+      <li><strong>Layout rectangles</strong><span>Measure and assign bounds</span><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 8h11m-4-4 4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></li>
+      <li><strong>Framebuffer draws</strong><span>Fill, stroke, line, and text</span><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 8h11m-4-4 4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></li>
+      <li><strong>Pixels in memory</strong><span>Blend into <code>List[Color]</code></span><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 8h11m-4-4 4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></li>
+      <li><strong>PNG encoder</strong><span><code>_write_png</code> packs rows</span><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 8h11m-4-4 4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></li>
+      <li><strong>PNG file</strong><span>Open it in an image viewer</span></li>
+    </ol>
+    <figcaption>Draw calls update pixels as they run. <code>clear</code> is a direct replacement of all pixels, including alpha.</figcaption>
+  </figure>
+  <p>Follow the title first. <code>title.size()</code> asks how much space the text wants. <code>column.place(...)</code> assigns space and moves the stack cursor. <code>title.draw(...)</code> turns the text into colored pixels inside that space.</p>
+<figure class="source"><figcaption><code>examples/demo.mojo</code><span>main · lines 24–25</span></figcaption><pre tabindex="0"><code data-source="examples/demo.mojo" data-lines="24-25">    var title = Label("MOJO UI", Color.rgb(236, 243, 253), scale=4)
+    title.draw(frame, column.place(title.size()))
+</code></pre></figure>
+  <p>This is immediate-mode UI. Your calls describe what appears each time you draw. A <code>Stack</code> remembers its current placement cursor while you use it. The library keeps no widget tree between frames. A retained-mode toolkit keeps a tree of widget objects, updates it over time, and can use it to lay out, redraw, and route events.</p>
+</section>
+<section id="modules">
+  <h2>Tour the library files</h2>
+  <h3 id="exports">Public imports</h3>
+  <p>The package entry point re-exports the names you can import from <code>mojo_ui</code>. Follow each import to find the implementing module.</p>
+<figure class="source"><figcaption><code>src/mojo_ui/__init__.mojo</code><span>Package re-exports · lines 3–7</span></figcaption><pre tabindex="0"><code data-source="src/mojo_ui/__init__.mojo" data-lines="3-7">from .color import Color
+from .font import text_width
+from .geometry import Insets, Point, Rect, Size
+from .raster import Framebuffer
+from .ui import Button, Label, Stack
+</code></pre></figure>
+
+  <h3 id="geometry">Geometry and clipping</h3>
+  <p><code>Point</code>, <code>Size</code>, <code>Insets</code>, and <code>Rect</code> use integers. The origin is top left, with <var>x</var> increasing rightward and <var>y</var> increasing downward. <code>Size</code> and <code>Insets</code> clamp negative values to zero.</p>
+  <p>A <code>Rect</code> is half-open. It includes its left and top edges and excludes its right and bottom edges. The constructor clamps negative dimensions to zero and trims widths or heights whose endpoint would exceed <code>Int.MAX</code>. That keeps <code>right()</code> and <code>bottom()</code> representable even for rectangles far offscreen.</p>
+  <p><code>intersection</code> gives you the area two rectangles share, or an empty rectangle when they only touch or are apart. <code>inset</code> shrinks a rectangle by per-edge padding and stops at an empty area when the padding uses up its space. The rasterizer uses intersection to clip and the widgets use inset to make room for padding.</p>
+<figure class="source"><figcaption><code>src/mojo_ui/geometry.mojo</code><span>Rect.intersection · lines 84–91</span></figcaption><pre tabindex="0"><code data-source="src/mojo_ui/geometry.mojo" data-lines="84-91">    def intersection(self, other: Self) -&gt; Self:
+        var left = max(self.x, other.x)
+        var top = max(self.y, other.y)
+        var right = min(self.right(), other.right())
+        var bottom = min(self.bottom(), other.bottom())
+        if right &lt;= left or bottom &lt;= top:
+            return Self(left, top, 0, 0)
+        return Self(left, top, right - left, bottom - top)
+</code></pre></figure>
+
+  <h3 id="color">Color and compositing</h3>
+  <p><code>Color</code> holds straight-alpha 8-bit red, green, blue, and alpha. It defines <code>TRANSPARENT</code>, <code>BLACK</code>, <code>WHITE</code>, <code>RED</code>, <code>GREEN</code>, and <code>BLUE</code>. <code>Color.rgb</code> sets alpha to 255. <code>Color.over</code> blends a source over the destination with wide integer weights and rounds at the end.</p>
+<figure class="source"><figcaption><code>src/mojo_ui/color.mojo</code><span>Color.over · lines 37–40</span></figcaption><pre tabindex="0"><code data-source="src/mojo_ui/color.mojo" data-lines="37-40">        # Keep the weights at full integer precision until the final division.
+        var foreground_weight = Int(self.a) * 255
+        var background_weight = Int(background.a) * (255 - Int(self.a))
+        var total_weight = foreground_weight + background_weight
+</code></pre></figure>
+
+  <h3 id="framebuffer">Framebuffer and drawing</h3>
+  <p><code>Framebuffer</code> owns a row-major <code>List[Color]</code>. Pixel <code>(x, y)</code> lives at index <code>y * width + x</code>. Drawing clips to the image bounds before storing pixels. <code>_blend_at</code> reads the current pixel, computes <code>Color.over</code>, and writes the result back.</p>
+<figure class="source"><figcaption><code>src/mojo_ui/raster.mojo</code><span>Framebuffer._blend_at and fill_rect · lines 45–54</span></figcaption><pre tabindex="0"><code data-source="src/mojo_ui/raster.mojo" data-lines="45-54">    def _blend_at(mut self, x: Int, y: Int, color: Color):
+        # Drawing methods clip before calling this helper.
+        var index = y * self._width + x
+        self._pixels[index] = color.over(self._pixels[index])
+
+    def fill_rect(mut self, rect: Rect, color: Color):
+        var area = rect.intersection(self.bounds())
+        for y in range(area.y, area.bottom()):
+            for x in range(area.x, area.right()):
+                self._blend_at(x, y, color)
+</code></pre></figure>
+  <ul>
+    <li><code>clear</code> replaces every pixel, including alpha. <code>fill_rect</code> blends each pixel of the clipped rectangle.</li>
+    <li><code>stroke_rect</code> fills four strips inside the rectangle. The strips never overlap, so a corner pixel blends at most once.</li>
+    <li><code>draw_line</code> draws a one-pixel Bresenham-style line including both endpoints when visible. The code clips the major-axis range before looping, interpolates the minor coordinate in <code>Int128</code>, then checks the minor-axis bounds before each write.</li>
+    <li><code>fill_rounded_rect</code> tests pixel centers against circular corners. Each sample is either in or out, giving hard, jagged edges at low resolutions.</li>
+    <li><code>draw_text</code> expands bitmap glyphs at the requested integer scale and clips them. <code>write_png</code> passes the current pixels to <code>_write_png</code>.</li>
+  </ul>
+
+  <h3 id="font">Bitmap font</h3>
+  <p>The font is 5 pixels wide and 7 high, with an advance of 6 pixels at scale 1. A glyph fits in <code>SIMD[DType.uint8, 8]</code>. Seven bytes hold the row masks and the eighth is padding. Lowercase maps to uppercase. The table covers uppercase letters, digits, and a few punctuation marks, with a question mark for unsupported characters. <code>text_width</code> excludes the gap after the last glyph.</p>
+<figure class="source"><figcaption><code>src/mojo_ui/font.mojo</code><span>Font dimensions and glyph storage · lines 4–10</span></figcaption><pre tabindex="0"><code data-source="src/mojo_ui/font.mojo" data-lines="4-10">comptime GLYPH_WIDTH = 5
+comptime GLYPH_HEIGHT = 7
+comptime GLYPH_ADVANCE = GLYPH_WIDTH + 1
+
+# Each value is one row. The leftmost pixel is the highest of the five bits.
+# The eighth slot pads the bitmap to a fixed-size vector.
+comptime _Glyph = SIMD[DType.uint8, 8]
+</code></pre></figure>
+
+  <h3 id="png">PNG encoding</h3>
+  <p>The encoder adds a filter type 0 byte to each row and copies the RGBA channels in order. The PNG starts with its signature, then writes <code>IHDR</code> for the image header, <code>IDAT</code> for image data, and <code>IEND</code> to finish.</p>
+  <p><code>IDAT</code> wraps the scanlines in zlib using stored (uncompressed) DEFLATE blocks and an Adler-32 checksum. Each PNG chunk also has a bitwise CRC-32 over its type and data. This module writes the format directly without an external image library.</p>
+<figure class="source"><figcaption><code>src/mojo_ui/png.mojo</code><span>_write_png · lines 100–104</span></figcaption><pre tabindex="0"><code data-source="src/mojo_ui/png.mojo" data-lines="100-104">    with open(path, "w") as file:
+        file.write_bytes(signature)
+        _write_chunk(file, "IHDR", header)
+        _write_chunk(file, "IDAT", compressed)
+        _write_chunk(file, "IEND", empty)
+</code></pre></figure>
+
+  <h3 id="widgets">Stack, Label, and Button</h3>
+  <p><code>Stack.vertical</code> and <code>Stack.horizontal</code> inset the bounds for padding. Each <code>place()</code> call returns a clipped rectangle and advances by the placed size plus any spacing that fits. An empty placement leaves the cursor where it was.</p>
+<figure class="source"><figcaption><code>src/mojo_ui/ui.mojo</code><span>Stack.place · lines 51–55</span></figcaption><pre tabindex="0"><code data-source="src/mojo_ui/ui.mojo" data-lines="51-55">        var placed = Rect(x, y, width, height)
+        if not placed.is_empty():
+            self._used += width if self._horizontal else height
+            self._used += min(self._spacing, capacity - self._used)
+        return placed
+</code></pre></figure>
+  <p>A <code>Label</code> draws one line from the top-left of its bounds. A <code>Button</code> fills a rounded background, insets its padding, and centers and clips its label inside that content area. The button can draw itself. Hit-testing and click handling are future work.</p>
+</section>
+<section id="demo">
+  <h2>The demo in drawing order</h2>
+  <p><code>examples/demo.mojo</code> creates a 480 × 248 frame, clears it to a dark color, and draws a rounded panel. Then it places <strong>MOJO UI</strong> and <strong>SOFTWARE RENDERING</strong> in a padded column, draws a divider line, and places <strong>START</strong> and <strong>ABOUT</strong> side by side. The result goes to <code>examples/out/demo.png</code>.</p>
+<figure class="source"><figcaption><code>examples/demo.mojo</code><span>main · lines 16–22</span></figcaption><pre tabindex="0"><code data-source="examples/demo.mojo" data-lines="16-22">def main() raises:
+    var frame = Framebuffer(480, 248)
+    frame.clear(Color.rgb(17, 23, 36))
+
+    var panel = Rect(32, 30, 416, 188)
+    frame.fill_rounded_rect(panel, 16, Color.rgb(29, 40, 59))
+    var column = Stack.vertical(panel, spacing=12, padding=Insets.uniform(24))
+</code></pre></figure>
+  <p>Look for the divider’s endpoint at <code>divider.right() - 1</code>. A line includes its last point, while a rectangle excludes its right edge, so subtracting one keeps the line inside its layout box.</p>
+</section>
+<section id="tests">
+  <h2>Tests and Pixi tasks</h2>
+  <p><code>tests/test_mojo_ui.mojo</code> exercises geometry, blending, rectangles, lines, text, PNG output, and widget layout deterministically without a window. The PNG round-trip test writes a 2 × 2 image, reads the file back, and checks every byte against a reference.</p>
+<figure class="source"><figcaption><code>tests/test_mojo_ui.mojo</code><span>test_color · lines 34–40</span></figcaption><pre tabindex="0"><code data-source="tests/test_mojo_ui.mojo" data-lines="34-40">def test_color() raises:
+    var half_red = Color(255, 0, 0, 128)
+    assert_true(Color.TRANSPARENT.over(half_red) == half_red)
+    assert_true(half_red.over(Color.TRANSPARENT) == half_red)
+    assert_true(Color.BLUE.over(half_red) == Color.BLUE)
+    assert_true(half_red.over(Color.BLUE) == Color(128, 0, 127, 255))
+    assert_true(half_red.over(Color(0, 0, 255, 128)) == Color(170, 0, 85, 192))
+</code></pre></figure>
+  <p><code>pixi.toml</code> pins the Mojo dependency to <code>1.2.*</code> and lists Modular’s <code>max</code> channel. From the root, <code>pixi run build</code> precompiles the library to <code>build/mojo_ui.mojoc</code>, <code>pixi run test</code> runs the headless tests, and <code>pixi run example</code> writes the demo PNG.</p>
+<figure class="source"><figcaption><code>pixi.toml</code><span>Dependencies and tasks · lines 8–14</span></figcaption><pre tabindex="0"><code data-source="pixi.toml" data-lines="8-14">[dependencies]
+mojo = "1.2.*"
+
+[tasks]
+build = "mkdir -p build &amp;&amp; mojo precompile src/mojo_ui -o build/mojo_ui.mojoc"
+test = "mojo run -I src tests/test_mojo_ui.mojo"
+example = "mkdir -p examples/out &amp;&amp; mojo run -I src examples/demo.mojo"
+</code></pre></figure>
+</section>
+<section id="roadmap">
+  <h2>What would come next</h2>
+  <p>The README starts with a window host using SDL or GLFW through C FFI. The host would present the pixels that the CPU renderer already makes. Pointer and keyboard events would come next. A GPU backend is a possible later step.</p>
+</section>
+
+      <footer class="lesson-footer"><a rel="prev" href="index.html">Previous · Start here</a><a rel="next" href="rendering.html">Next · Rendering 101</a></footer>
+    </main>
+  </div>
+</body>
+</html>

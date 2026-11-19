@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A window, a drawing API, and a button solve different problems. See where each belongs and where mojo-ui fits.">
+  <title>Who does what on the way to the screen? | mojo-ui field guide</title>
+  <script src="theme.js"></script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="index.html">
+        <span class="brand-mark"><svg width="19" height="19" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M2 2h6v6H2zm10 0h6v6h-6zM2 12h6v6H2z" fill="currentColor"/><path d="M12.5 12.5h5v5h-5z" fill="none" stroke="currentColor"/></svg></span>
+        <span class="brand-name">mojo-ui</span>
+      </a>
+      <div class="header-actions">
+        <a href="https://github.com/amirhosseindavoody/mojo-ui">Repository</a>
+        <button class="theme" id="theme-toggle" type="button" hidden><span id="theme-choice">Dark</span><span class="theme-suffix"> theme</span></button>
+      </div>
+    </div>
+  </header>
+  <div class="shell">
+    <nav class="sidebar" aria-label="Guide chapters">
+      <p class="sidebar-title">Field guide</p>
+      <ul class="chapter-nav">
+        <li><a href="index.html">Start here</a></li>
+        <li><a href="architecture.html">Follow a frame</a></li>
+        <li><a href="rendering.html">Rendering 101</a></li>
+        <li><a href="graphics-stack.html" aria-current="page">The graphics stack</a></li>
+        <li><a href="performance.html">Mojo and performance</a></li>
+        <li><a href="exercises.html">Hands-on exercises</a></li>
+        <li><a href="reference.html">Glossary and reading</a></li>
+      </ul>
+      <p class="sidebar-note">Mojo 1.2 · CPU rasterizer</p>
+    </nav>
+    <main id="main" tabindex="-1" class="lesson">
+      <header class="lesson-header"><p class="eyebrow">The graphics stack</p><h1>Who does what on the way to the screen?</h1><p class="lead">A window, a drawing API, and a button solve different problems. See where each belongs and where mojo-ui fits.</p></header>
+      <nav class="local-nav" aria-label="On this page"><p>On this page</p><ul><li><a href="#layers">Layers</a></li><li><a href="#drivers">CPU and GPU</a></li><li><a href="#window-host">SDL and GLFW</a></li></ul></nav>
+      <section id="layers">
+  <h2>Read the layers by responsibility</h2>
+  <p>Think of drawing and presenting as two jobs. The drawing path produces pixels. The window and display path decides where those pixels appear and delivers input to the app. A toolkit often coordinates both.</p>
+  <figure class="diagram">
+    <div class="diagram-split">
+      <ol class="layer-grid" aria-label="Typical drawing layers from application to hardware">
+        <li><strong>App and toolkit</strong><span>GPUI, egui, Dear ImGui, Qt</span><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 8h11m-4-4 4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></li>
+        <li><strong>2D drawing</strong><span>Skia, Direct2D, Cairo</span><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 8h11m-4-4 4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></li>
+        <li><strong>Graphics API or CPU rasterizer</strong><span>OpenGL, Vulkan, Direct3D, Metal, WebGPU, or software drawing</span><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 8h11m-4-4 4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></li>
+        <li><strong>Compute and memory</strong><span>CPU and RAM, or GPU and its accessible memory through a driver</span></li>
+      </ol>
+      <div class="diagram-side">
+        <p><strong>Window and display</strong><br>X11, Wayland, Win32/DWM, Cocoa and the macOS window system</p>
+        <p>Input travels to the app. Rendered buffers travel to the display system for presentation.</p>
+        <p><strong>SDL or GLFW</strong> can provide a portable interface for the window and input side.</p>
+      </div>
+    </div>
+    <figcaption>This is a map of roles. Applications can skip layers or combine them. mojo-ui goes from its own layout and widgets to its CPU rasterizer and saves the buffer as a file.</figcaption>
+  </figure>
+  <ul class="steps">
+    <li><strong>Windowing and display systems</strong> help create windows, route input, and present buffers on screen. On Linux, X11 and Wayland are ways clients talk to a display server or compositor. On Windows, Win32 exposes window and input APIs and DWM composes windows. On macOS, Cocoa’s AppKit handles app windows and events, with system services handling composition.</li>
+    <li><strong>Graphics APIs</strong> describe work for a graphics implementation. OpenGL, Vulkan, Direct3D (the 3D graphics API in Microsoft’s DirectX family), Metal, and WebGPU can submit drawing to a GPU. A software implementation can execute graphics work on the CPU.</li>
+    <li><strong>2D libraries</strong> such as Skia, Direct2D, and Cairo work with concepts like paths, glyphs, and images. They may use CPU rendering, hardware acceleration, or both, depending on the library and backend.</li>
+    <li><strong>UI toolkits</strong> such as GPUI, egui, Dear ImGui, and Qt provide widgets and layout. Some own an event loop and others leave it to the host. Their rendering integrations vary.</li>
+  </ul>
+  <aside class="callout">
+    <p><strong>X11 and Direct3D solve different jobs.</strong> X11 concerns windows, input, and presenting pixels on Linux. Direct3D draws through Microsoft’s graphics API, usually on a GPU. An X11 program can display a CPU surface without Direct3D. This demo draws without X11 and saves a file instead.</p>
+  </aside>
+</section>
+<section id="drivers">
+  <h2>CPU rendering, GPU rendering, and drivers</h2>
+  <p>In CPU rendering, your loops calculate the pixel colors in system memory. In GPU rendering, the app describes resources and drawing or compute work, and the GPU runs that work across many hardware lanes. Both can produce the same picture.</p>
+  <p>A GPU driver implements parts of the graphics API for the device. It helps turn work requests into device commands and manages resources and synchronization with the operating system and GPU. The display system can then present the result, often through a compositor that combines multiple windows into a screen image.</p>
+  <p>For a small image, submitting work or copying memory can cost more than the drawing saves. A large scene with lots of independent pixel work is a better place to test GPU rendering.</p>
+</section>
+<section id="window-host">
+  <h2>What SDL and GLFW would add</h2>
+  <p>SDL and GLFW can open a window and receive input on several platforms. SDL also offers a 2D rendering API that can display a texture made from CPU pixels. GLFW can provide an OpenGL context or help create a Vulkan surface. Your renderer or graphics code still turns shapes into pixels.</p>
+  <p>For mojo-ui, the first window host could show the CPU framebuffer as-is. <code>Stack</code>, <code>Label</code>, and <code>Button</code> would draw the familiar demo. The host would present the resulting pixels each time it draws a frame.</p>
+</section>
+
+      <footer class="lesson-footer"><a rel="prev" href="rendering.html">Previous · Rendering 101</a><a rel="next" href="performance.html">Next · Mojo and performance</a></footer>
+    </main>
+  </div>
+</body>
+</html>

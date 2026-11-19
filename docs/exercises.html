@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="First measure the code you have. Then try one change at a time, check the pixels, and measure again.">
+  <title>Build on the rasterizer | mojo-ui field guide</title>
+  <script src="theme.js"></script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="index.html">
+        <span class="brand-mark"><svg width="19" height="19" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M2 2h6v6H2zm10 0h6v6h-6zM2 12h6v6H2z" fill="currentColor"/><path d="M12.5 12.5h5v5h-5z" fill="none" stroke="currentColor"/></svg></span>
+        <span class="brand-name">mojo-ui</span>
+      </a>
+      <div class="header-actions">
+        <a href="https://github.com/amirhosseindavoody/mojo-ui">Repository</a>
+        <button class="theme" id="theme-toggle" type="button" hidden><span id="theme-choice">Dark</span><span class="theme-suffix"> theme</span></button>
+      </div>
+    </div>
+  </header>
+  <div class="shell">
+    <nav class="sidebar" aria-label="Guide chapters">
+      <p class="sidebar-title">Field guide</p>
+      <ul class="chapter-nav">
+        <li><a href="index.html">Start here</a></li>
+        <li><a href="architecture.html">Follow a frame</a></li>
+        <li><a href="rendering.html">Rendering 101</a></li>
+        <li><a href="graphics-stack.html">The graphics stack</a></li>
+        <li><a href="performance.html">Mojo and performance</a></li>
+        <li><a href="exercises.html" aria-current="page">Hands-on exercises</a></li>
+        <li><a href="reference.html">Glossary and reading</a></li>
+      </ul>
+      <p class="sidebar-note">Mojo 1.2 · CPU rasterizer</p>
+    </nav>
+    <main id="main" tabindex="-1" class="lesson">
+      <header class="lesson-header"><p class="eyebrow">Hands-on exercises</p><h1>Build on the rasterizer</h1><p class="lead">First measure the code you have. Then try one change at a time, check the pixels, and measure again.</p></header>
+      <nav class="local-nav" aria-label="On this page"><p>On this page</p><ul><li><a href="#benchmark">Benchmark</a></li><li><a href="#simd">SIMD fill</a></li><li><a href="#tiles">Tiles</a></li><li><a href="#aa">Anti-aliasing</a></li><li><a href="#font">TrueType</a></li><li><a href="#sdl">SDL window</a></li><li><a href="#gpu">GPU backend</a></li></ul></nav>
+      <div class="callout">
+  <p>Run these from the repository root. Create the named programs in your own <code>exercises/</code> directory as you go. Use <code>-I src</code> when you only need public APIs. For work inside the renderer, copy <code>src/mojo_ui</code> to <code>exercises/sandbox/mojo_ui</code> and use <code>-I exercises/sandbox</code>.</p>
+  <p>Keep <code>pixi run test</code> as the check for the original library. Run the existing test program against your sandbox too when you expect identical pixels.</p>
+  <pre class="commands" tabindex="0"><code>pixi run test
+pixi run mojo run -I exercises/sandbox tests/test_mojo_ui.mojo</code></pre>
+</div>
+<section id="benchmark">
+  <h2>1. Time a fill and a frame</h2>
+  <p><strong>Goal.</strong> Get a baseline you can reproduce. You’ll practice warm-up, choosing a workload, and checking what the timer actually includes.</p>
+  <p><strong>Start here.</strong> Read <code>Framebuffer.fill_rect</code> in <code>src/mojo_ui/raster.mojo</code> and the draw sequence in <code>examples/demo.mojo</code>. Allocate the frame once. With <code>perf_counter_ns</code> from <code>std.time</code>, bracket a batch of fills, subtract the start from the end, and divide by the number of fills. Read or check pixels after the timed batch so the result is used. Warm up with a few batches and print the median and range of repeated measurements.</p>
+  <p><strong>Measure success.</strong> Report nanoseconds per fill or pixels per second for opaque and translucent fills at 480 × 248 and at a larger size. Hold the frame dimensions, input colors, and workload fixed when comparing implementations. Time rendering a full frame separately from <code>write_png</code> so file I/O and encoding don’t hide changes to drawing. Lower time for the same work is faster. Record machine and toolchain with your results.</p>
+  <pre class="commands" tabindex="0"><code>pixi run mojo run -I src exercises/bench_fill.mojo</code></pre>
+</section>
+<section id="simd">
+  <h2>2. SIMD-ize the rectangle fill</h2>
+  <p><strong>Goal.</strong> Write several adjacent pixels per batch in the opaque case. You’ll practice lanes, contiguous stores, and finishing the last few pixels in a row.</p>
+  <p><strong>Start here.</strong> Follow <code>fill_rect</code> to <code>_blend_at</code>. Keep the intersection with framebuffer bounds. Prototype row stores over a packed pixel scratch buffer first if that makes the pixel format easier to control. Broadcast the opaque source word across vector lanes, write only inside the clipped row, then handle its tail. Keep the existing blend for translucent colors. Try the same repeated stores in <code>clear</code>, including for a transparent clear.</p>
+  <p><strong>Measure success.</strong> Compare with the scalar reference after each draw. Include widths 1, 7, 8, and 9, a partially offscreen rectangle, alpha values 0, 128, and 255, and a partially transparent destination. Profile with the baseline workload and report whether throughput improved.</p>
+  <pre class="commands" tabindex="0"><code>pixi run mojo run -I exercises/sandbox exercises/simd_fill.mojo
+pixi run mojo run -I exercises/sandbox tests/test_mojo_ui.mojo</code></pre>
+</section>
+<section id="tiles">
+  <h2>3. Divide the frame into parallel tiles</h2>
+  <p><strong>Goal.</strong> Use multiple cores to fill disjoint parts of a frame. You’ll practice splitting work, assigning write ownership, and joining workers before consuming their output.</p>
+  <p><strong>Start here.</strong> Reuse <code>Rect.intersection</code> and the row loop in <code>fill_rect</code>. Start with serial 64 × 64 tiles, including smaller tiles at the edges. Then give groups of tiles to separate workers. Use one private framebuffer per worker to avoid sharing a mutable <code>List</code> while you learn. Translate bounds into local coordinates and assemble the returned pixels after the workers finish. If you don’t have a verified Mojo worker API, you can try a Python process pool with a compiled Mojo worker that accepts a tile’s bounds and returns its bytes. Keep the same draw order inside every tile when you add overlapping draws.</p>
+  <p><strong>Measure success.</strong> Compare every pixel against the untiled fill after a clear and after two overlapping fills with alpha. Try a width one pixel beyond an exact tile multiple. Measure one worker and several workers at the demo size and a larger size, including the cost of dispatching and joining. If you use private buffers, include the copy when reporting end-to-end time.</p>
+  <pre class="commands" tabindex="0"><code>pixi run mojo run -I exercises/sandbox exercises/tiled_fill.mojo</code></pre>
+  <p>Use that program as the serial tiled reference. For the Python process variant, build your worker once, then have your local Python run the worker executable and compare the combined output with that reference.</p>
+  <pre class="commands" tabindex="0"><code>pixi run mojo build -I exercises/sandbox exercises/tile_worker.mojo -o exercises/tile_worker
+python3 exercises/parallel_tiles.py</code></pre>
+</section>
+<section id="aa">
+  <h2>4. Smooth a rounded edge</h2>
+  <p><strong>Goal.</strong> Add an experimental anti-aliased rounded rectangle. You’ll practice estimating coverage and carrying it into source alpha.</p>
+  <p><strong>Start here.</strong> In <code>fill_rounded_rect</code>, replace the center sample in your experimental path with four samples. Try offsets <code>0.25</code> and <code>0.75</code> on each axis. Multiply source alpha by the fraction inside, round to a byte, and use <code>Color.over</code> once per destination pixel. Keep the hard-edged method as a reference.</p>
+  <p><strong>Measure success.</strong> Write two PNGs on the same contrasting background. Zoom in with nearest-neighbor scaling. Look for intermediate shades at the corners, and check that fully covered and fully uncovered pixels match the original. Record the time cost on a rounded panel. Once that works, try the same coverage idea on a line with a defined width.</p>
+  <pre class="commands" tabindex="0"><code>pixi run mojo run -I exercises/sandbox exercises/rounded_aa.mojo</code></pre>
+</section>
+<section id="font">
+  <h2>5. Render a TrueType glyph</h2>
+  <p><strong>Goal.</strong> Draw a scalable glyph into the framebuffer. You’ll practice turning an outline into a coverage mask and positioning it relative to a baseline.</p>
+  <p><strong>Start here.</strong> Read <code>_glyph</code> in <code>src/mojo_ui/font.mojo</code> and the row walk in <code>draw_text</code>. Pick a font you can use locally. Use FreeType or a small native helper to rasterize one TrueType outline at a chosen size. Use its advance to move the pen and its bearings to position the mask. Treat each mask byte as coverage when blending the chosen color. The existing clip logic is a good pattern to reuse.</p>
+  <p><strong>Measure success.</strong> Draw two glyphs at two sizes in a PNG and check alignment, clipping, and partially covered edges. As an extension, cache masks by glyph ID and size in a small atlas, a shared image holding many glyphs. Compare repeated drawing with and without the cache. For shaped text, a separate step would use HarfBuzz to get glyph IDs and positions. One or two glyphs are enough for this exercise.</p>
+  <pre class="commands" tabindex="0"><code>pixi run mojo run -I exercises/sandbox exercises/outline_text.mojo</code></pre>
+</section>
+<section id="sdl">
+  <h2>6. Present a frame in an SDL window</h2>
+  <p><strong>Goal.</strong> Show the CPU-rendered demo in a real window. You’ll practice C FFI, pixel formats, row pitch, and resource lifetimes.</p>
+  <p><strong>Start here.</strong> Install SDL3 for your platform and use its headers and official docs to check the C signatures. Wrap a small surface of SDL calls through Mojo’s C FFI or a thin C shim. Reuse the draw sequence in <code>examples/demo.mojo</code>, then stage four explicit RGBA bytes per pixel using <code>Framebuffer.pixel</code>. Match SDL’s texture format to the byte order in that buffer and pass a pitch of <code>4 × width</code> for tightly packed rows.</p>
+  <p><strong>Measure success.</strong> Open a window, update the texture, draw it, and present it. Compare colors and orientation with <code>pixi run example</code>. Pump window events so you can close the window, and check that you release the texture, renderer, and window on exit. Leave button interaction for a later exercise. Time staging and upload separately if you want to see where presentation spends time.</p>
+  <pre class="commands" tabindex="0"><code>pixi run example
+pixi run mojo run -I src exercises/sdl_window.mojo</code></pre>
+</section>
+<section id="gpu">
+  <h2>7. Sketch a GPU backend</h2>
+  <p><strong>Goal.</strong> Plan a backend boundary and try a small proof of concept on supported hardware. You’ll learn what belongs in CPU layout, what you transfer, and what a GPU kernel or drawing pass does.</p>
+  <p><strong>Start here.</strong> Follow <code>Stack.place</code> to <code>Framebuffer.fill_rect</code>. Keep the layout rectangles on the CPU. Sketch a representation for a rectangle, clip, and color that a backend could consume. First show an uploaded CPU-rendered frame. Then try filling one rectangle in an offscreen GPU image with one invocation per pixel and read it back for comparison. Multiple draws will need ordering rules for blending.</p>
+  <p><strong>Measure success.</strong> Generate a CPU reference for a clipped opaque rectangle and compare the GPU readback pixel by pixel. Time uploads, completed kernel work, and readback separately. A timer around submission alone measures the host’s work of asking for a draw. With no compatible GPU, finish the backend sketch and use the CPU reference to document expected pixels and transfer sizes.</p>
+  <pre class="commands" tabindex="0"><code>pixi run mojo run -I src exercises/gpu_reference.mojo
+pixi run mojo run -I src exercises/gpu_rect.mojo</code></pre>
+  <p>The first command is the CPU harness you write. The second is for the optional prototype and needs a compatible Mojo GPU toolchain and device.</p>
+</section>
+
+      <footer class="lesson-footer"><a rel="prev" href="performance.html">Previous · Mojo and performance</a><a rel="next" href="reference.html">Next · Glossary and reading</a></footer>
+    </main>
+  </div>
+</body>
+</html>

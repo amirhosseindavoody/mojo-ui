@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Use the rasterizer to learn ownership, cache locality, SIMD, and parallel work. Then trace the path to a window or GPU.">
+  <title>Make the CPU do more with each pass | mojo-ui field guide</title>
+  <script src="theme.js"></script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="index.html">
+        <span class="brand-mark"><svg width="19" height="19" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M2 2h6v6H2zm10 0h6v6h-6zM2 12h6v6H2z" fill="currentColor"/><path d="M12.5 12.5h5v5h-5z" fill="none" stroke="currentColor"/></svg></span>
+        <span class="brand-name">mojo-ui</span>
+      </a>
+      <div class="header-actions">
+        <a href="https://github.com/amirhosseindavoody/mojo-ui">Repository</a>
+        <button class="theme" id="theme-toggle" type="button" hidden><span id="theme-choice">Dark</span><span class="theme-suffix"> theme</span></button>
+      </div>
+    </div>
+  </header>
+  <div class="shell">
+    <nav class="sidebar" aria-label="Guide chapters">
+      <p class="sidebar-title">Field guide</p>
+      <ul class="chapter-nav">
+        <li><a href="index.html">Start here</a></li>
+        <li><a href="architecture.html">Follow a frame</a></li>
+        <li><a href="rendering.html">Rendering 101</a></li>
+        <li><a href="graphics-stack.html">The graphics stack</a></li>
+        <li><a href="performance.html" aria-current="page">Mojo and performance</a></li>
+        <li><a href="exercises.html">Hands-on exercises</a></li>
+        <li><a href="reference.html">Glossary and reading</a></li>
+      </ul>
+      <p class="sidebar-note">Mojo 1.2 · CPU rasterizer</p>
+    </nav>
+    <main id="main" tabindex="-1" class="lesson">
+      <header class="lesson-header"><p class="eyebrow">Mojo and performance</p><h1>Make the CPU do more with each pass</h1><p class="lead">Use the rasterizer to learn ownership, cache locality, SIMD, and parallel work. Then trace the path to a window or GPU.</p></header>
+      <nav class="local-nav" aria-label="On this page"><p>On this page</p><ul><li><a href="#ownership">Ownership</a></li><li><a href="#cache">Cache</a></li><li><a href="#simd">SIMD</a></li><li><a href="#tiles">Cores and tiles</a></li><li><a href="#ffi">Pointers and FFI</a></li><li><a href="#gpu">GPU</a></li></ul></nav>
+      <section id="ownership">
+  <h2>Read a little Mojo at a time</h2>
+  <p>A Mojo <code>struct</code> groups fields and methods, much like a Rust struct with an <code>impl</code>. Mojo uses indentation like Python, and declarations such as <code>var _width: Int</code> give fields a type. <code>Framebuffer</code> owns its list and implements <code>Movable</code> so ownership of the framebuffer can be transferred.</p>
+<figure class="source"><figcaption><code>src/mojo_ui/raster.mojo</code><span>Framebuffer · lines 9–12</span></figcaption><pre tabindex="0"><code data-source="src/mojo_ui/raster.mojo" data-lines="9-12">struct Framebuffer(Movable):
+    var _width: Int
+    var _height: Int
+    var _pixels: List[Color]
+</code></pre></figure>
+  <p><code>mut frame: Framebuffer</code> in a widget’s <code>draw</code> lets the widget change the caller’s existing framebuffer. Think of a Rust <code>&amp;mut</code> borrow as an analogy. Mojo has its own argument conventions and lifetime rules. A <code>mut self</code> method does the same for the receiver. The caller can keep drawing into the same buffer.</p>
+  <p>In <code>Label.__init__</code>, <code>out self</code> is the instance being initialized. The <code>var text</code> parameter gives the function an owned value. <code>text^</code> transfers that value into the label field, leaving the local <code>text</code> unavailable until assigned again. This avoids copying the string for that assignment.</p>
+<figure class="source"><figcaption><code>src/mojo_ui/ui.mojo</code><span>Label.__init__ · lines 65–70</span></figcaption><pre tabindex="0"><code data-source="src/mojo_ui/ui.mojo" data-lines="65-70">    def __init__(
+        out self, var text: String, color: Color = Color.WHITE, scale: Int = 1
+    ):
+        self.text = text^
+        self.color = color
+        self.scale = scale
+</code></pre></figure>
+  <p>Use the same idea when writing an exercise. Allocate the framebuffer once and draw into it many times. Passing it for mutation lets you avoid allocating or copying a frame for each widget.</p>
+</section>
+<section id="cache">
+  <h2>Keep nearby pixels nearby</h2>
+  <p>CPU caches hold recently accessed blocks of memory. When the CPU fetches one pixel, bytes near it tend to arrive in the same cache line. The inner <var>x</var> loop of <code>fill_rect</code> already follows the list order. Walking a tall column would step by an entire row each time and use less of each cache line before fetching another.</p>
+  <p><code>List[Color]</code> is an array of structs, or AoS. Red, green, blue, and alpha for each pixel are interleaved as fields. It puts everything <code>Color.over</code> needs for one pixel together.</p>
+  <ul>
+    <li><strong>Structure of arrays (SoA).</strong> Separate red, green, blue, and alpha arrays give you contiguous values of each channel. A vector blend can load several red values together. Whole-frame passes that touch every channel now have four streams, and PNG or texture upload needs interleaved bytes again.</li>
+    <li><strong>Packed pixels.</strong> A <code>List[UInt32]</code> can store one explicit 32-bit word per pixel. Several identical words can be written together for an opaque fill or clear. Blending requires unpacking channels, and byte order matters when those words cross a C or graphics boundary.</li>
+  </ul>
+  <p>The current <code>Color</code> fields are already byte-sized. Treat packing or SoA as a change in how you access bytes, with any cache or SIMD gain to be measured. If you draw several primitives per region, a tile can keep its rows hot in cache while you finish that region.</p>
+</section>
+<section id="simd">
+  <h2>Work on several pixels in one instruction</h2>
+  <p>SIMD means <em>single instruction, multiple data</em>. A vector has lanes. If you add two vectors, each lane gets its own sum. The font gives you a readable first encounter with Mojo’s type syntax:</p>
+<figure class="source"><figcaption><code>src/mojo_ui/font.mojo</code><span>_Glyph · lines 8–10</span></figcaption><pre tabindex="0"><code data-source="src/mojo_ui/font.mojo" data-lines="8-10"># Each value is one row. The leftmost pixel is the highest of the five bits.
+# The eighth slot pads the bitmap to a fixed-size vector.
+comptime _Glyph = SIMD[DType.uint8, 8]
+</code></pre></figure>
+  <p>Read the brackets as a compile-time recipe for the type. It holds eight unsigned bytes. This renderer uses the lanes as storage for glyph rows and indexes them one at a time. The glyph buffer itself doesn’t make text drawing a SIMD operation.</p>
+  <p>For an opaque <code>fill_rect</code>, every covered destination can receive the source directly. Once the rectangle is clipped, write a vector of repeated pixel words across each row. Finish the last few pixels with smaller batches or a scalar loop. <code>clear</code> can also write repeated words, even when its input is transparent, because its job is replacement.</p>
+  <p>For a translucent fill, load the destination pixels too. Match <code>Color.over</code> by widening the channels before multiplying, preserving the integer rounding, and handling fully transparent source or destination colors. Start with the opaque case so you can measure the gain from vector stores before implementing the blend.</p>
+  <aside class="callout">
+    <p><strong>Checked on Mojo 1.2.0.</strong> <code>vectorize</code> imports from <code>std.algorithm</code>. A small toolchain check used nine items, a requested width of four, and a callback parameterized by lane count. The callback received offsets 0, 4, and 8 with widths 4, 4, and 1. The callback still has to do the vector work. The compiler, CPU, and your data layout determine which instructions run.</p>
+  </aside>
+</section>
+<section id="tiles">
+  <h2>Give separate tiles to separate cores</h2>
+  <p>SIMD uses several lanes within an instruction. CPU parallelism lets multiple cores run work at the same time. Divide the frame into disjoint tiles, such as 64 × 64 pixels. Intersect each rectangle with a tile and redraw the clipped portion there. If you process several draws inside a tile, keep them in their original order so alpha still blends correctly.</p>
+  <p>Start with <code>clear</code> or an opaque fill. Each output pixel has a single writer. Have workers finish before you read the frame or write the PNG. In a tightly packed buffer, workers writing adjacent tiles can still contend for a shared cache line. Compare a tile grid with whole-row bands to see how much work and memory traffic each approach creates.</p>
+  <p>The demo’s frame may be too small to repay worker startup and synchronization. Test a larger buffer as well. A <code>parallelize</code> import could not be verified with the locked Mojo 1.2.0 toolchain. Check the official standard library for the version you run before choosing a worker API. The tiling exercise can use a serial pass and a worker path with independent buffers.</p>
+</section>
+<section id="ffi">
+  <h2>Cross into C with a small interface</h2>
+  <p>A pointer represents a memory address. Pointers make it possible for C and Mojo to refer to the same pixel bytes. The moment you use an unsafe pointer, you must prove the address is valid, the range and alignment are right, the buffer stays alive, and concurrent access is safe. A stale or out-of-bounds pointer can corrupt memory.</p>
+  <p>A foreign function interface (FFI) lets Mojo call a C library using the types and calling convention that C expects. With SDL, a window host could first read <code>Framebuffer.pixel</code> in row order and produce explicit RGBA bytes. Then it could hand SDL a pointer to those bytes and the row pitch in bytes. A tightly packed RGBA byte buffer has a pitch of <code>4 × width</code>.</p>
+  <p>Keep the buffer alive for the call and obey the receiving API’s lifetime rules. Start with the copy so the pixel format is easy to verify. A later host could use a borrow or write directly into an SDL texture buffer, after checking layout, pitch, and ownership. See the <a href="reference.html#mojo-links">official Mojo C FFI guide</a> for the current syntax.</p>
+</section>
+<section id="gpu">
+  <h2>Move the image first, then the drawing</h2>
+  <p>The first GPU-shaped step is still CPU rendering. Upload the RGBA buffer to a texture and display it through a graphics API or SDL. This proves presentation and gives you a number for the cost of the upload. The CPU still does all the blending.</p>
+  <p>A later GPU backend could keep layout on the CPU and pass rectangles, colors, and clips to the device. The GPU could rasterize them through a graphics pipeline or use a compute kernel with many invocations, each handling a pixel or tile. Respect draw order for overlapping transparent shapes and match the CPU’s straight-alpha and rounding rules if you need byte-for-byte parity.</p>
+  <p>Mojo can target GPU kernels with a compatible toolchain and device. The host-side APIs, supported hardware, and interop with display textures can change. Check the locked version and available device before relying on a specific API. Start with one offscreen rectangle and measure upload, kernel execution, and readback separately.</p>
+</section>
+
+      <footer class="lesson-footer"><a rel="prev" href="graphics-stack.html">Previous · The graphics stack</a><a rel="next" href="exercises.html">Next · Hands-on exercises</a></footer>
+    </main>
+  </div>
+</body>
+</html>

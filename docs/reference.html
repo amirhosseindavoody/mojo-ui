@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Keep this page handy when a rendering term or a Mojo syntax detail slows you down.">
+  <title>Glossary and further reading | mojo-ui field guide</title>
+  <script src="theme.js"></script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="index.html">
+        <span class="brand-mark"><svg width="19" height="19" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M2 2h6v6H2zm10 0h6v6h-6zM2 12h6v6H2z" fill="currentColor"/><path d="M12.5 12.5h5v5h-5z" fill="none" stroke="currentColor"/></svg></span>
+        <span class="brand-name">mojo-ui</span>
+      </a>
+      <div class="header-actions">
+        <a href="https://github.com/amirhosseindavoody/mojo-ui">Repository</a>
+        <button class="theme" id="theme-toggle" type="button" hidden><span id="theme-choice">Dark</span><span class="theme-suffix"> theme</span></button>
+      </div>
+    </div>
+  </header>
+  <div class="shell">
+    <nav class="sidebar" aria-label="Guide chapters">
+      <p class="sidebar-title">Field guide</p>
+      <ul class="chapter-nav">
+        <li><a href="index.html">Start here</a></li>
+        <li><a href="architecture.html">Follow a frame</a></li>
+        <li><a href="rendering.html">Rendering 101</a></li>
+        <li><a href="graphics-stack.html">The graphics stack</a></li>
+        <li><a href="performance.html">Mojo and performance</a></li>
+        <li><a href="exercises.html">Hands-on exercises</a></li>
+        <li><a href="reference.html" aria-current="page">Glossary and reading</a></li>
+      </ul>
+      <p class="sidebar-note">Mojo 1.2 · CPU rasterizer</p>
+    </nav>
+    <main id="main" tabindex="-1" class="lesson">
+      <header class="lesson-header"><p class="eyebrow">Glossary and reading</p><h1>Glossary and further reading</h1><p class="lead">Keep this page handy when a rendering term or a Mojo syntax detail slows you down.</p></header>
+      <nav class="local-nav" aria-label="On this page"><p>On this page</p><ul><li><a href="#glossary">Glossary</a></li><li><a href="#reading">Further reading</a></li></ul></nav>
+      <section id="glossary">
+  <h2>Glossary</h2>
+  <dl class="terms">
+    <dt>Alpha</dt><dd>A color’s opacity. In straight-alpha RGBA, the RGB channels are stored independently of alpha.</dd>
+    <dt>Anti-aliasing</dt><dd>Techniques that reduce visible stair steps, often by giving edge pixels partial coverage.</dd>
+    <dt>AoS / SoA</dt><dd>Array of structs keeps a pixel’s channels together. Structure of arrays groups the same channel across pixels.</dd>
+    <dt>Cache line</dt><dd>A block of bytes that moves together between cache levels or between cache and main memory.</dd>
+    <dt>Clipping</dt><dd>Restricting drawing to an area, such as the overlap between a rectangle and the image.</dd>
+    <dt>Compositor</dt><dd>The part of a display system that assembles multiple surfaces into the picture on the screen.</dd>
+    <dt>Event loop</dt><dd>The repeated work of handling messages, updating state, and drawing or presenting as needed.</dd>
+    <dt>FFI</dt><dd>Foreign function interface. A way for one language to make calls across another language’s binary interface.</dd>
+    <dt>Framebuffer</dt><dd>The memory holding pixel colors for an image or frame.</dd>
+    <dt>Glyph</dt><dd>A drawable shape from a font. Shaping selects which glyphs to draw and where to place them.</dd>
+    <dt>Half-open</dt><dd>A range that includes the start and excludes the end. mojo-ui rectangles exclude the right and bottom edges.</dd>
+    <dt>Headless</dt><dd>A program can run without a window or display server.</dd>
+    <dt>Hit-testing</dt><dd>Checking what lies at a position, such as whether a pointer is inside a button’s bounds.</dd>
+    <dt>Immediate mode</dt><dd>UI built by calls made as you produce each frame. Retained mode keeps a widget tree that can be updated over time.</dd>
+    <dt>Pitch</dt><dd>The number of bytes from the start of one image row to the start of the next, including any padding.</dd>
+    <dt>Presentation</dt><dd>Handing a finished buffer or image to a window or display system to show on screen.</dd>
+    <dt>Rasterization</dt><dd>Turning shapes or glyphs into samples on a pixel grid.</dd>
+    <dt>SIMD</dt><dd>Single instruction, multiple data. One instruction operates across multiple data lanes.</dd>
+    <dt>Source-over</dt><dd>Painting a foreground over a background so the background shows through the source’s transparent portion.</dd>
+    <dt>Texture</dt><dd>An image resource a graphics system can read or draw. A texture upload transfers pixel data into that resource.</dd>
+    <dt>Tile</dt><dd>A rectangular piece of an image that can be processed as a unit.</dd>
+  </dl>
+</section>
+<section id="reading">
+  <h2>Further reading</h2>
+  <h3 id="mojo-links">Mojo and Pixi</h3>
+  <ul>
+    <li>Language guide and standard library reference. <a href="https://mojolang.org/docs/">Official Mojo documentation</a></li>
+    <li>Read about owned arguments, mutable access, and transfers. <a href="https://mojolang.org/docs/manual/values/ownership/">Mojo ownership</a></li>
+    <li>Find the verified loop helper in the standard library. <a href="https://mojolang.org/docs/std/algorithm/backend/vectorize/vectorize/">Mojo vectorize reference</a></li>
+    <li>Read how Mojo calls existing C code. <a href="https://mojolang.org/docs/manual/c-ffi/">Mojo C FFI</a></li>
+    <li>See how Modular introduces GPU kernels. <a href="https://max.modular.com/gpu/intro-tutorial/">Modular GPU introduction</a></li>
+    <li>Set up the project’s environment manager. <a href="https://pixi.prefix.dev/latest/installation/">Pixi installation guide</a></li>
+  </ul>
+  <h3>Windows and displays</h3>
+  <ul>
+    <li>Read the official window, input, and texture APIs. <a href="https://wiki.libsdl.org/SDL3/FrontPage">SDL3 wiki</a> · <a href="https://wiki.libsdl.org/SDL3/SDL_UpdateTexture">SDL_UpdateTexture</a> · <a href="https://www.glfw.org/docs/latest/">GLFW documentation</a></li>
+    <li>Learn about the Linux display systems. <a href="https://www.x.org/">X.Org</a> · <a href="https://wayland.freedesktop.org/">Wayland project</a></li>
+  </ul>
+  <h3>Graphics APIs</h3>
+  <ul>
+    <li>Find Khronos references and a practical tutorial. <a href="https://www.opengl.org/">OpenGL</a> · <a href="https://github.com/KhronosGroup/Vulkan-Guide">Khronos Vulkan Guide</a> · <a href="https://learnopengl.com/">LearnOpenGL</a></li>
+    <li>Read the official references for other graphics APIs. <a href="https://learn.microsoft.com/en-us/windows/win32/direct3d">Direct3D</a> · <a href="https://developer.apple.com/metal/">Metal</a> · <a href="https://www.w3.org/TR/webgpu/">WebGPU specification</a></li>
+  </ul>
+  <h3>2D drawing, text, and images</h3>
+  <ul>
+    <li>See how production libraries expose 2D drawing. <a href="https://skia.org/docs/">Skia documentation</a> · <a href="https://learn.microsoft.com/en-us/windows/win32/direct2d/direct2d-portal">Direct2D documentation</a> · <a href="https://cairographics.org/">Cairo project</a></li>
+    <li>Go deeper on outlines, rasterization, and glyph positioning. <a href="https://freetype.org/freetype2/docs/">FreeType overview</a> · <a href="https://harfbuzz.github.io/">HarfBuzz manual</a></li>
+    <li>Compare the repo’s encoder with the file format. <a href="https://www.w3.org/TR/png/">W3C PNG specification</a></li>
+  </ul>
+</section>
+
+      <footer class="lesson-footer"><a rel="prev" href="exercises.html">Previous · Hands-on exercises</a><a href="index.html">Back to start</a></footer>
+    </main>
+  </div>
+</body>
+</html>
